@@ -1,18 +1,35 @@
 import { Address, Enrollment } from '@prisma/client';
 import { request } from '@/utils/request';
-import { notFoundError } from '@/errors';
+import { invalidDataError, notFoundError } from '@/errors';
 import { addressRepository, CreateAddressParams, enrollmentRepository, CreateEnrollmentParams } from '@/repositories';
 import { exclude } from '@/utils/prisma-utils';
+import { AddressEnrollment } from '@/protocols';
 
-// TODO - Receber o CEP por parâmetro nesta função.
-async function getAddressFromCEP() {
+// ok  TODO - Receber o CEP por parâmetro nesta função.
+async function getAddressFromCEP(cep: string): Promise<AddressEnrollment> {
   // FIXME: está com CEP fixo!
-  const result = await request.get(`${process.env.VIA_CEP_API}/37440000/json/`);
+  const result = await request.get(`${process.env.VIA_CEP_API}/${cep}/json/`);
 
-  // TODO: Tratar regras de negócio e lanças eventuais erros
+  // ok // TODO: Tratar regras de negócio e lanças eventuais erros
 
-  // FIXME: não estamos interessados em todos os campos
-  return result.data;
+  // ok // FIXME: não estamos interessados em todos os campos
+  //return result.data;
+
+  if (!result.data || result.data.erro) {
+    throw notFoundError(); // lança um erro para quem chamou essa função!
+  }
+
+  const { bairro, localidade, uf, complemento, logradouro } = result.data;
+
+  const address: AddressEnrollment = {
+    bairro,
+    cidade: localidade,
+    uf,
+    complemento,
+    logradouro,
+  };
+
+  return address;
 }
 
 async function getOneWithAddressByUserId(userId: number): Promise<GetOneWithAddressByUserIdResult> {
@@ -41,11 +58,15 @@ type GetAddressResult = Omit<Address, 'createdAt' | 'updatedAt' | 'enrollmentId'
 
 async function createOrUpdateEnrollmentWithAddress(params: CreateOrUpdateEnrollmentWithAddress) {
   const enrollment = exclude(params, 'address');
-  enrollment.birthday = new Date(enrollment.birthday);
+  //enrollment.birthday = new Date(enrollment.birthday);
   const address = getAddressForUpsert(params.address);
-
+  // ok
   // TODO - Verificar se o CEP é válido antes de associar ao enrollment.
-
+  try {
+    await getAddressFromCEP(address.cep);
+  } catch {
+    throw invalidDataError(['invalid CEP']);
+  }
   const newEnrollment = await enrollmentRepository.upsert(params.userId, enrollment, exclude(enrollment, 'userId'));
 
   await addressRepository.upsert(newEnrollment.id, address, address);
