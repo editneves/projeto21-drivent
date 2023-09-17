@@ -88,3 +88,4 @@ export const enrollmentsService = {
   createOrUpdateEnrollmentWithAddress,
   getAddressFromCEP,
 };
+export default enrollmentsService;
